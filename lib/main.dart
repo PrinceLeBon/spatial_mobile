@@ -25,6 +25,7 @@ class SpatialMobileApp extends StatelessWidget {
     return MaterialApp(
       title: 'Spatial Mobile',
       debugShowCheckedModeBanner: false,
+      showPerformanceOverlay: true,
       // Thème minimal : on gère tout manuellement pour le contrôle maximal
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: Colors.black,
