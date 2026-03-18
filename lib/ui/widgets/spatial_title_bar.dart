@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/spatial_theme.dart';
 
@@ -38,7 +37,7 @@ class SpatialWindowTitleBar extends StatelessWidget {
             const SizedBox(width: 7),
             Text(
               title,
-              style: GoogleFonts.inter(
+              style: TextStyle(fontFamily: 'Inter', 
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: SpatialTheme.textPrimary,

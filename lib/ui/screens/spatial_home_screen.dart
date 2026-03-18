@@ -38,10 +38,11 @@ class SpatialHomeScreen extends StatefulWidget {
 }
 
 class _SpatialHomeScreenState extends State<SpatialHomeScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final GyroService _gyroService;
   late final SpatialWindowsController _windowsController;
   late final AnimationController _bgAnimController;
+  late final AnimationController _launchController;
   late final List<StarData> _stars;
 
   @override
@@ -57,6 +58,12 @@ class _SpatialHomeScreenState extends State<SpatialHomeScreen>
       duration: const Duration(seconds: 8),
     )..repeat();
 
+    // Animation de lancement : 1400ms, joue une seule fois
+    _launchController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..forward();
+
     _gyroService.start();
   }
 
@@ -64,6 +71,7 @@ class _SpatialHomeScreenState extends State<SpatialHomeScreen>
   void dispose() {
     _gyroService.dispose();
     _bgAnimController.dispose();
+    _launchController.dispose();
     _windowsController.dispose();
     super.dispose();
   }
@@ -75,20 +83,34 @@ class _SpatialHomeScreenState extends State<SpatialHomeScreen>
       body: Stack(
         children: [
           // ── Couche 1 : Fond spatial animé ──────────────────────────────────
-          _BackgroundLayer(
-            gyroService: _gyroService,
-            bgAnimController: _bgAnimController,
-            stars: _stars,
+          // Le fond fade-in rapidement (0→300ms) pour éviter le flash noir
+          FadeTransition(
+            opacity: CurvedAnimation(
+              parent: _launchController,
+              curve: const Interval(0.0, 0.25, curve: Curves.easeIn),
+            ),
+            child: _BackgroundLayer(
+              gyroService: _gyroService,
+              bgAnimController: _bgAnimController,
+              stars: _stars,
+            ),
           ),
 
           // ── Couche 2 : Fenêtres flottantes ─────────────────────────────────
           _WindowsLayer(
             windowsController: _windowsController,
             gyroService: _gyroService,
+            launchController: _launchController,
           ),
 
           // ── Couche 3 : UI overlay (status bar personnalisé) ─────────────────
-          const _StatusBar(),
+          FadeTransition(
+            opacity: CurvedAnimation(
+              parent: _launchController,
+              curve: const Interval(0.6, 1.0, curve: Curves.easeOut),
+            ),
+            child: const _StatusBar(),
+          ),
         ],
       ),
     );
@@ -146,10 +168,12 @@ class _WindowsLayer extends StatelessWidget {
   const _WindowsLayer({
     required this.windowsController,
     required this.gyroService,
+    required this.launchController,
   });
 
   final SpatialWindowsController windowsController;
   final GyroService gyroService;
+  final AnimationController launchController;
 
   @override
   Widget build(BuildContext context) {
@@ -158,21 +182,94 @@ class _WindowsLayer extends StatelessWidget {
       builder: (ctx, child) {
         return Stack(
           children: [
-            for (final windowData in windowsController.windows)
+            for (int i = 0; i < windowsController.windows.length; i++)
               Positioned(
-                left: windowData.position.dx,
-                top: windowData.position.dy,
-                child: _GyroWindowWrapper(
-                  data: windowData,
-                  gyroService: gyroService,
-                  onPanUpdate: (delta) =>
-                      windowsController.updatePosition(windowData.id, delta),
-                  onTap: () => windowsController.bringToFront(windowData.id),
+                left: windowsController.windows[i].position.dx,
+                top: windowsController.windows[i].position.dy,
+                // Chaque fenêtre apparaît avec un délai staggeré :
+                // fenêtre 0 (lointaine) → commence à t=10%
+                // fenêtre 3 (proche)   → commence à t=40%
+                // L'intervalle de chaque fenêtre dure 55% de l'animation totale
+                child: _LaunchWrapper(
+                  launchController: launchController,
+                  index: i,
+                  child: _GyroWindowWrapper(
+                    data: windowsController.windows[i],
+                    gyroService: gyroService,
+                    onPanUpdate: (delta) => windowsController.updatePosition(
+                      windowsController.windows[i].id,
+                      delta,
+                    ),
+                    onTap: () => windowsController.bringToFront(
+                      windowsController.windows[i].id,
+                    ),
+                  ),
                 ),
               ),
           ],
         );
       },
+    );
+  }
+}
+
+/// Applique l'animation de lancement staggerée à une fenêtre.
+///
+/// Chaque fenêtre (identifiée par [index]) démarre son animation à un moment
+/// légèrement différent → effet "cascade" naturel.
+///
+/// Séquence :
+/// - Scale  : 0.82 → 1.0  (fenêtre "sort" vers le spectateur)
+/// - Opacity: 0.0  → 1.0
+/// - Blur   : translateY de +20px → 0 (fenêtres arrivent par le bas)
+///
+/// Interval(start, end) : [0.0, 1.0] représente toute la durée du controller.
+class _LaunchWrapper extends StatelessWidget {
+  const _LaunchWrapper({
+    required this.launchController,
+    required this.index,
+    required this.child,
+  });
+
+  final AnimationController launchController;
+  final int index;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    // Stagger : 4 fenêtres, chacune démarre 10% plus tard.
+    // Interval : chaque animation couvre 55% de la durée totale.
+    final start = index * 0.10;
+    final end = (start + 0.55).clamp(0.0, 1.0);
+
+    final curve = CurvedAnimation(
+      parent: launchController,
+      curve: Interval(start, end, curve: Curves.easeOutCubic),
+    );
+
+    return AnimatedBuilder(
+      animation: curve,
+      builder: (context, child) {
+        final v = curve.value; // [0.0 → 1.0]
+        return Opacity(
+          opacity: v,
+          child: Transform(
+            alignment: Alignment.center,
+            transform: Matrix4.identity()
+              ..setEntry(3, 2, 0.0018)
+              // Fenêtres arrivent légèrement du bas et de loin
+              ..translateByDouble(0, (1.0 - v) * 24.0, 0, 1.0)
+              ..scaleByDouble(
+                0.82 + v * 0.18, // 0.82 → 1.0
+                0.82 + v * 0.18,
+                1.0,
+                1.0,
+              ),
+            child: child,
+          ),
+        );
+      },
+      child: child,
     );
   }
 }

@@ -1,5 +1,6 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/spatial_theme.dart';
 import '../../sensors/spatial_windows_controller.dart';
@@ -72,7 +73,8 @@ class _MusicWindowContentState extends State<MusicWindowContent>
                     children: [
                       Text(
                         'Interstellar',
-                        style: GoogleFonts.inter(
+                        style: TextStyle(
+                          fontFamily: 'Inter',
                           color: SpatialTheme.textPrimary,
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
@@ -81,7 +83,8 @@ class _MusicWindowContentState extends State<MusicWindowContent>
                       ),
                       Text(
                         'Hans Zimmer',
-                        style: GoogleFonts.inter(
+                        style: TextStyle(
+                          fontFamily: 'Inter',
                           color: SpatialTheme.textSecondary,
                           fontSize: 11,
                         ),
@@ -267,7 +270,8 @@ class WeatherWindowContent extends StatelessWidget {
                     children: [
                       Text(
                         'Paris',
-                        style: GoogleFonts.inter(
+                        style: TextStyle(
+                          fontFamily: 'Inter',
                           color: SpatialTheme.textSecondary,
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
@@ -275,7 +279,8 @@ class WeatherWindowContent extends StatelessWidget {
                       ),
                       Text(
                         '18°',
-                        style: GoogleFonts.inter(
+                        style: TextStyle(
+                          fontFamily: 'Inter',
                           color: SpatialTheme.textPrimary,
                           fontSize: 42,
                           fontWeight: FontWeight.w200,
@@ -284,7 +289,8 @@ class WeatherWindowContent extends StatelessWidget {
                       ),
                       Text(
                         'Partiellement nuageux',
-                        style: GoogleFonts.inter(
+                        style: TextStyle(
+                          fontFamily: 'Inter',
                           color: SpatialTheme.textSecondary,
                           fontSize: 10,
                         ),
@@ -340,7 +346,8 @@ class _WeatherRow extends StatelessWidget {
         const SizedBox(width: 3),
         Text(
           label,
-          style: GoogleFonts.inter(
+          style: TextStyle(
+            fontFamily: 'Inter',
             color: SpatialTheme.textSecondary,
             fontSize: 9,
           ),
@@ -432,7 +439,8 @@ class _NotifItem extends StatelessWidget {
                   children: [
                     Text(
                       app,
-                      style: GoogleFonts.inter(
+                      style: TextStyle(
+                        fontFamily: 'Inter',
                         color: SpatialTheme.textSecondary,
                         fontSize: 9,
                         fontWeight: FontWeight.w600,
@@ -441,7 +449,8 @@ class _NotifItem extends StatelessWidget {
                     ),
                     Text(
                       time,
-                      style: GoogleFonts.inter(
+                      style: TextStyle(
+                        fontFamily: 'Inter',
                         color: SpatialTheme.textTertiary,
                         fontSize: 9,
                       ),
@@ -450,7 +459,8 @@ class _NotifItem extends StatelessWidget {
                 ),
                 Text(
                   message,
-                  style: GoogleFonts.inter(
+                  style: TextStyle(
+                    fontFamily: 'Inter',
                     color: SpatialTheme.textPrimary,
                     fontSize: 11,
                   ),
@@ -468,13 +478,73 @@ class _NotifItem extends StatelessWidget {
 
 // ── Fenêtre Horloge ───────────────────────────────────────────────────────────
 
-class ClockWindowContent extends StatelessWidget {
+class ClockWindowContent extends StatefulWidget {
   const ClockWindowContent({super.key});
 
   @override
+  State<ClockWindowContent> createState() => _ClockWindowContentState();
+}
+
+class _ClockWindowContentState extends State<ClockWindowContent> {
+  late DateTime _now;
+  late Timer _timer;
+
+  // Noms des jours et mois en français
+  static const _jours = [
+    'Lundi',
+    'Mardi',
+    'Mercredi',
+    'Jeudi',
+    'Vendredi',
+    'Samedi',
+    'Dimanche',
+  ];
+  static const _mois = [
+    'janvier',
+    'février',
+    'mars',
+    'avril',
+    'mai',
+    'juin',
+    'juillet',
+    'août',
+    'septembre',
+    'octobre',
+    'novembre',
+    'décembre',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _now = DateTime.now();
+    // Timer.periodic déclenche setState exactement 1x/sec — coût négligeable
+    // car l'horloge est isolée dans son propre widget
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      setState(() => _now = DateTime.now());
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer.cancel(); // Toujours annuler pour éviter les fuites
+    super.dispose();
+  }
+
+  String get _timeString {
+    final h = _now.hour.toString().padLeft(2, '0');
+    final m = _now.minute.toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
+  String get _dateString {
+    final jour = _jours[_now.weekday - 1]; // weekday: 1=Lundi
+    final mois = _mois[_now.month - 1]; // month: 1=Janvier
+    return '$jour, ${_now.day} $mois ${_now.year}';
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // Pour une démo statique on affiche une heure fixe.
-    // En production : utiliser un Timer.periodic + setState ou stream.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -488,9 +558,19 @@ class ClockWindowContent extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                // Secondes : barre de progression fine — donne vie à l'horloge
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: _SecondsBar(
+                    seconds: _now.second,
+                    accentColor: SpatialTheme.accentClock,
+                  ),
+                ),
+                const SizedBox(height: 8),
                 Text(
-                  '22:41',
-                  style: GoogleFonts.inter(
+                  _timeString,
+                  style: TextStyle(
+                    fontFamily: 'Inter',
                     color: SpatialTheme.textPrimary,
                     fontSize: 44,
                     fontWeight: FontWeight.w100,
@@ -498,12 +578,54 @@ class ClockWindowContent extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  'Mercredi, 18 mars 2026',
-                  style: GoogleFonts.inter(
+                  _dateString,
+                  style: TextStyle(
+                    fontFamily: 'Inter',
                     color: SpatialTheme.textSecondary,
                     fontSize: 10,
                     letterSpacing: 0.5,
                   ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Barre de progression des secondes [0–59] → [0%–100%]
+class _SecondsBar extends StatelessWidget {
+  const _SecondsBar({required this.seconds, required this.accentColor});
+  final int seconds;
+  final Color accentColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = seconds / 59.0;
+    return Stack(
+      children: [
+        // Track
+        Container(
+          height: 2,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(1),
+          ),
+        ),
+        // Fill
+        FractionallySizedBox(
+          widthFactor: progress,
+          child: Container(
+            height: 2,
+            decoration: BoxDecoration(
+              color: accentColor.withValues(alpha: 0.8),
+              borderRadius: BorderRadius.circular(1),
+              boxShadow: [
+                BoxShadow(
+                  color: accentColor.withValues(alpha: 0.5),
+                  blurRadius: 4,
                 ),
               ],
             ),
