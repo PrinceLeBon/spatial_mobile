@@ -52,13 +52,11 @@ class _SpatialHomeScreenState extends State<SpatialHomeScreen>
     _windowsController = SpatialWindowsController();
     _stars = StarData.generate(160);
 
-    // Animation lente pour le scintillement des étoiles (8s loop)
     _bgAnimController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 8),
     )..repeat();
 
-    // Animation de lancement : 1400ms, joue une seule fois
     _launchController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1400),
@@ -83,7 +81,6 @@ class _SpatialHomeScreenState extends State<SpatialHomeScreen>
       body: Stack(
         children: [
           // ── Couche 1 : Fond spatial animé ──────────────────────────────────
-          // Le fond fade-in rapidement (0→300ms) pour éviter le flash noir
           FadeTransition(
             opacity: CurvedAnimation(
               parent: _launchController,
@@ -103,13 +100,22 @@ class _SpatialHomeScreenState extends State<SpatialHomeScreen>
             launchController: _launchController,
           ),
 
-          // ── Couche 3 : UI overlay (status bar personnalisé) ─────────────────
-          FadeTransition(
-            opacity: CurvedAnimation(
-              parent: _launchController,
-              curve: const Interval(0.6, 1.0, curve: Curves.easeOut),
+          // ── Couche 3 : Status bar ───────────────────────────────────────────
+          // RÈGLE : Positioned doit être enfant DIRECT du Stack.
+          // On ne wrappe pas _StatusBar dans FadeTransition (causerait l'erreur
+          // "ParentData is not a subtype of StackParentData").
+          // À la place : Positioned ici, FadeTransition à l'intérieur.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: FadeTransition(
+              opacity: CurvedAnimation(
+                parent: _launchController,
+                curve: const Interval(0.6, 1.0, curve: Curves.easeOut),
+              ),
+              child: const _StatusBar(),
             ),
-            child: const _StatusBar(),
           ),
         ],
       ),
@@ -134,8 +140,6 @@ class _BackgroundLayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Double ValueListenableBuilder pour combiner les deux sources sans créer
-    // de State supplémentaire.
     return ValueListenableBuilder<GyroState>(
       valueListenable: gyroService.state,
       builder: (ctx, gyroState, child) {
@@ -186,10 +190,6 @@ class _WindowsLayer extends StatelessWidget {
               Positioned(
                 left: windowsController.windows[i].position.dx,
                 top: windowsController.windows[i].position.dy,
-                // Chaque fenêtre apparaît avec un délai staggeré :
-                // fenêtre 0 (lointaine) → commence à t=10%
-                // fenêtre 3 (proche)   → commence à t=40%
-                // L'intervalle de chaque fenêtre dure 55% de l'animation totale
                 child: _LaunchWrapper(
                   launchController: launchController,
                   index: i,
@@ -214,16 +214,6 @@ class _WindowsLayer extends StatelessWidget {
 }
 
 /// Applique l'animation de lancement staggerée à une fenêtre.
-///
-/// Chaque fenêtre (identifiée par [index]) démarre son animation à un moment
-/// légèrement différent → effet "cascade" naturel.
-///
-/// Séquence :
-/// - Scale  : 0.82 → 1.0  (fenêtre "sort" vers le spectateur)
-/// - Opacity: 0.0  → 1.0
-/// - Blur   : translateY de +20px → 0 (fenêtres arrivent par le bas)
-///
-/// Interval(start, end) : [0.0, 1.0] représente toute la durée du controller.
 class _LaunchWrapper extends StatelessWidget {
   const _LaunchWrapper({
     required this.launchController,
@@ -237,8 +227,6 @@ class _LaunchWrapper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Stagger : 4 fenêtres, chacune démarre 10% plus tard.
-    // Interval : chaque animation couvre 55% de la durée totale.
     final start = index * 0.10;
     final end = (start + 0.55).clamp(0.0, 1.0);
 
@@ -250,21 +238,15 @@ class _LaunchWrapper extends StatelessWidget {
     return AnimatedBuilder(
       animation: curve,
       builder: (context, child) {
-        final v = curve.value; // [0.0 → 1.0]
+        final v = curve.value;
         return Opacity(
           opacity: v,
           child: Transform(
             alignment: Alignment.center,
             transform: Matrix4.identity()
               ..setEntry(3, 2, 0.0018)
-              // Fenêtres arrivent légèrement du bas et de loin
               ..translateByDouble(0, (1.0 - v) * 24.0, 0, 1.0)
-              ..scaleByDouble(
-                0.82 + v * 0.18, // 0.82 → 1.0
-                0.82 + v * 0.18,
-                1.0,
-                1.0,
-              ),
+              ..scaleByDouble(0.82 + v * 0.18, 0.82 + v * 0.18, 1.0, 1.0),
             child: child,
           ),
         );
@@ -274,8 +256,7 @@ class _LaunchWrapper extends StatelessWidget {
   }
 }
 
-/// Wrapper minimal qui souscrit au ValueNotifier gyro et
-/// reconstruit UNIQUEMENT le SpatialWindow concerné.
+/// Wrapper minimal qui souscrit au ValueNotifier gyro.
 class _GyroWindowWrapper extends StatelessWidget {
   const _GyroWindowWrapper({
     required this.data,
@@ -317,7 +298,7 @@ class _GyroWindowWrapper extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Status bar overlay
+// Status bar
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _StatusBar extends StatelessWidget {
@@ -325,49 +306,45 @@ class _StatusBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Positioned(
-      top: 0,
-      left: 0,
-      right: 0,
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Spatial Mobile',
-                style: TextStyle(
+    // Pas de Positioned ici — il est dans le Stack du build() parent.
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Spatial Mobile',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.45),
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                letterSpacing: 2,
+              ),
+            ),
+            Row(
+              children: [
+                Icon(
+                  Icons.signal_cellular_alt,
                   color: Colors.white.withValues(alpha: 0.45),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                  letterSpacing: 2,
+                  size: 14,
                 ),
-              ),
-              Row(
-                children: [
-                  Icon(
-                    Icons.signal_cellular_alt,
-                    color: Colors.white.withValues(alpha: 0.45),
-                    size: 14,
-                  ),
-                  const SizedBox(width: 5),
-                  Icon(
-                    Icons.wifi,
-                    color: Colors.white.withValues(alpha: 0.45),
-                    size: 14,
-                  ),
-                  const SizedBox(width: 5),
-                  Icon(
-                    Icons.battery_full,
-                    color: Colors.white.withValues(alpha: 0.45),
-                    size: 14,
-                  ),
-                ],
-              ),
-            ],
-          ),
+                const SizedBox(width: 5),
+                Icon(
+                  Icons.wifi,
+                  color: Colors.white.withValues(alpha: 0.45),
+                  size: 14,
+                ),
+                const SizedBox(width: 5),
+                Icon(
+                  Icons.battery_full,
+                  color: Colors.white.withValues(alpha: 0.45),
+                  size: 14,
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
